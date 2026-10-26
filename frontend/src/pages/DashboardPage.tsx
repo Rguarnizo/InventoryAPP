@@ -5,6 +5,7 @@ import { Link, useNavigate } from 'react-router';
 import { api } from '../api/client';
 import type { BatchStatus, Dashboard } from '../api/types';
 import { PageHeader } from '../components/PageHeader';
+import { BatchProducts } from '../components/BatchProducts';
 import { StatusBadge } from '../components/StatusBadge';
 import { BATCH_STATUS, date, money, num, qty } from '../lib/format';
 
@@ -75,7 +76,9 @@ export function DashboardPage() {
                         {date(b.production_date)}
                       </Text>
                     </Table.Td>
-                    <Table.Td>{b.product.name}</Table.Td>
+                    <Table.Td>
+                      <BatchProducts items={b.items} max={2} />
+                    </Table.Td>
                     <Table.Td ta="right">{b.planned_quantity} u</Table.Td>
                     <Table.Td>
                       <StatusBadge status={b.status} />

@@ -138,21 +138,37 @@ export interface ProductRef {
   name: string;
   type: ProductType;
   thumb_url: string | null;
+  reference_price: number | null;
+}
+
+export interface BatchItem {
+  id: number;
+  product: ProductRef;
+  planned_quantity: number;
+  produced_quantity: number | null;
+  defective_quantity: number;
+  good_quantity: number;
+  estimated_unit_cost: number;
+  allocated_cost: number;
+  unit_cost: number | null;
+}
+
+export interface BatchItemInput {
+  product_id: number;
+  planned_quantity: number;
+  mixture_overrides?: Record<number, number>;
 }
 
 export interface Batch {
   id: number;
   code: string;
-  product: ProductRef;
   production_date: string;
-  planned_quantity: number;
-  produced_quantity: number | null;
-  defective_quantity: number;
-  good_quantity: number;
   status: BatchStatus;
   materials_consumed: boolean;
+  items: BatchItem[];
+  planned_quantity: number;
+  good_quantity: number;
   total_cost: number;
-  unit_cost: number | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -160,6 +176,12 @@ export interface Batch {
 
 export interface BatchDetail extends Batch {
   materials: { id: number; material: MaterialRef; quantity: number; unit_cost: number }[];
+}
+
+export interface BatchPreview {
+  items: { product_id: number; planned_quantity: number; estimated_unit_cost: number }[];
+  lines: CostLine[];
+  total: number;
 }
 
 export interface Dashboard {

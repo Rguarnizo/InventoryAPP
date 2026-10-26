@@ -225,18 +225,17 @@ class Batch(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     code: Mapped[str] = mapped_column(String(32), unique=True)
-    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"))
     production_date: Mapped[date] = mapped_column(Date, server_default=func.current_date())
-    planned_quantity: Mapped[int] = mapped_column(Integer)
-    produced_quantity: Mapped[int | None] = mapped_column(Integer)
-    defective_quantity: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[BatchStatus] = mapped_column(
         _enum(BatchStatus, "batch_status"), default=BatchStatus.planificado
     )
     materials_consumed: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text)
 
-    product: Mapped[Product] = relationship(lazy="joined")
+    items: Mapped[list["BatchItem"]] = relationship(
+        back_populates="batch", cascade="all, delete-orphan", lazy="selectin",
+        order_by="BatchItem.id",
+    )
     materials: Mapped[list["BatchMaterial"]] = relationship(
         back_populates="batch", cascade="all, delete-orphan", lazy="selectin",
         order_by="BatchMaterial.id",
@@ -247,14 +246,58 @@ class Batch(Base, TimestampMixin):
         return sum(m.quantity * m.unit_cost for m in self.materials)
 
     @property
+    def planned_quantity(self) -> int:
+        return sum(i.planned_quantity for i in self.items)
+
+    @property
+    def good_quantity(self) -> int:
+        return sum(i.good_quantity for i in self.items)
+
+    def cost_share(self, item: "BatchItem") -> float:
+        """Fracción del costo del lote que corresponde a un ítem.
+
+        Se reparte según el costo estimado de la receta (unidades × costo unitario estimado);
+        si no hay estimación, según las unidades planificadas.
+        """
+        weights = [i.planned_quantity * (i.estimated_unit_cost or 0) for i in self.items]
+        if sum(weights) <= 0:
+            weights = [i.planned_quantity for i in self.items]
+        total = sum(weights)
+        return weights[self.items.index(item)] / total if total else 0.0
+
+
+class BatchItem(Base):
+    """Un producto (figura o vela) dentro de un lote."""
+
+    __tablename__ = "batch_items"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("batches.id", ondelete="CASCADE"))
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id", ondelete="RESTRICT"))
+    planned_quantity: Mapped[int] = mapped_column(Integer)
+    produced_quantity: Mapped[int | None] = mapped_column(Integer)
+    defective_quantity: Mapped[int] = mapped_column(Integer, default=0)
+    # Costo unitario estimado por receta al crear el lote; se usa para repartir el costo real
+    estimated_unit_cost: Mapped[float] = mapped_column(Float, default=0)
+
+    batch: Mapped[Batch] = relationship(back_populates="items")
+    product: Mapped[Product] = relationship(lazy="joined")
+
+    __table_args__ = (CheckConstraint("planned_quantity > 0", name="ck_batch_item_planned"),)
+
+    @property
     def good_quantity(self) -> int:
         produced = self.produced_quantity if self.produced_quantity is not None else self.planned_quantity
         return max(produced - (self.defective_quantity or 0), 0)
 
     @property
+    def allocated_cost(self) -> float:
+        return self.batch.total_cost * self.batch.cost_share(self)
+
+    @property
     def unit_cost(self) -> float | None:
         good = self.good_quantity
-        return self.total_cost / good if good else None
+        return self.allocated_cost / good if good else None
 
 
 class BatchMaterial(Base):

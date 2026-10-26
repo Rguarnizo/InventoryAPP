@@ -419,17 +419,33 @@ export function ProductPage() {
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
-                      {batches.data.map((b) => (
-                        <Table.Tr key={b.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/lotes/${b.id}`)}>
-                          <Table.Td fw={600}>{b.code}</Table.Td>
-                          <Table.Td>{date(b.production_date)}</Table.Td>
-                          <Table.Td ta="right">{b.status === 'terminado' ? b.good_quantity : `${b.planned_quantity} (plan.)`}</Table.Td>
-                          <Table.Td ta="right">{money(b.unit_cost)}</Table.Td>
-                          <Table.Td>
-                            <StatusBadge status={b.status} />
-                          </Table.Td>
-                        </Table.Tr>
-                      ))}
+                      {batches.data.map((b) => {
+                        // Un lote puede tener varios productos; se muestra la línea de este
+                        const item = b.items.find((i) => i.product.id === Number(id));
+                        if (!item) return null;
+                        return (
+                          <Table.Tr key={b.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/lotes/${b.id}`)}>
+                            <Table.Td>
+                              <Text size="sm" fw={600}>
+                                {b.code}
+                              </Text>
+                              {b.items.length > 1 && (
+                                <Text size="xs" c="dimmed">
+                                  con {b.items.length - 1} producto{b.items.length > 2 ? 's' : ''} más
+                                </Text>
+                              )}
+                            </Table.Td>
+                            <Table.Td>{date(b.production_date)}</Table.Td>
+                            <Table.Td ta="right">
+                              {b.status === 'terminado' ? item.good_quantity : `${item.planned_quantity} (plan.)`}
+                            </Table.Td>
+                            <Table.Td ta="right">{money(item.unit_cost)}</Table.Td>
+                            <Table.Td>
+                              <StatusBadge status={b.status} />
+                            </Table.Td>
+                          </Table.Tr>
+                        );
+                      })}
                     </Table.Tbody>
                   </Table>
                 ) : (

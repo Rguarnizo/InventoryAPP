@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.deps import CurrentUser, DbSession
 from app.models import (
     Batch,
+    BatchItem,
     Material,
     Mixture,
     MovementType,
@@ -218,7 +219,8 @@ def cost_preview(product_id: int, data: CostRequest, db: DbSession, _: CurrentUs
 @router.get("/{product_id}/batches", response_model=list[BatchOut])
 def product_batches(product_id: int, db: DbSession, _: CurrentUser):
     get_or_404(db, product_id)
-    stmt = select(Batch).where(Batch.product_id == product_id).order_by(Batch.production_date.desc(), Batch.id.desc())
+    stmt = (select(Batch).where(Batch.items.any(BatchItem.product_id == product_id))
+            .order_by(Batch.production_date.desc(), Batch.id.desc()))
     return db.scalars(stmt).all()
 
 

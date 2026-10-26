@@ -6,33 +6,26 @@ import { api } from '../api/client';
 import type { Batch, Page, Product } from '../api/types';
 import { Column, DataTable } from '../components/DataTable';
 import { PageHeader } from '../components/PageHeader';
-import { ProductThumb } from '../components/ProductThumb';
+import { BatchProducts } from '../components/BatchProducts';
 import { StatusBadge } from '../components/StatusBadge';
 import { BATCH_STATUS, date, money } from '../lib/format';
 import { useListState } from '../lib/useListState';
 
 const columns: Column<Batch>[] = [
-  { key: 'code', header: 'Lote', sortable: true, render: (b) => <Text size="sm" fw={600} ff="monospace">{b.code}</Text> },
-  { key: 'production_date', header: 'Fecha', sortable: true, render: (b) => date(b.production_date) },
-  {
-    key: 'product',
-    header: 'Producto',
-    sortable: true,
-    render: (b) => (
-      <Group gap="xs" wrap="nowrap">
-        <ProductThumb url={b.product.thumb_url} type={b.product.type} size={30} />
-        <Text size="sm">{b.product.name}</Text>
-      </Group>
-    ),
-  },
+  { key: 'code', header: 'Lote', sortable: true, render: (b) => <Text size="sm" fw={600} ff="monospace" style={{ whiteSpace: 'nowrap' }}>{b.code}</Text> },
+  { key: 'production_date', header: 'Fecha', sortable: true, render: (b) => <Text size="sm" style={{ whiteSpace: 'nowrap' }}>{date(b.production_date)}</Text> },
+  { key: 'items', header: 'Productos', sortable: true, render: (b) => <BatchProducts items={b.items} /> },
   { key: 'planned_quantity', header: 'Planificadas', sortable: true, align: 'right', render: (b) => b.planned_quantity },
-  { key: 'produced_quantity', header: 'Producidas', sortable: true, align: 'right', render: (b) => b.produced_quantity ?? '—' },
-  { key: 'defective_quantity', header: 'Defectuosas', sortable: true, align: 'right', hidden: true, render: (b) => b.defective_quantity },
-  { key: 'good_quantity', header: 'Buenas', sortable: true, align: 'right', hidden: true, render: (b) => b.good_quantity },
+  {
+    key: 'good_quantity',
+    header: 'Buenas',
+    sortable: true,
+    align: 'right',
+    render: (b) => (b.status === 'terminado' ? b.good_quantity : '—'),
+  },
   { key: 'total_cost', header: 'Costo total', sortable: true, align: 'right', render: (b) => money(b.total_cost) },
-  { key: 'unit_cost', header: 'Costo unitario', sortable: true, align: 'right', render: (b) => money(b.unit_cost) },
   { key: 'status', header: 'Estado', sortable: true, render: (b) => <StatusBadge status={b.status} /> },
-];
+]
 
 export function BatchesPage() {
   const navigate = useNavigate();

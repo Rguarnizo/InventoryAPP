@@ -48,3 +48,15 @@ def expand_recipe(
             add(mc.material, total * mc.proportion / proportion_sum)
 
     return list(needs.values())
+
+
+def merge_needs(groups: list[list[MaterialNeed]]) -> list[MaterialNeed]:
+    """Suma las necesidades de material de varios productos."""
+    merged: dict[int, MaterialNeed] = {}
+    for needs in groups:
+        for n in needs:
+            if n.material.id in merged:
+                merged[n.material.id].quantity += n.quantity
+            else:
+                merged[n.material.id] = MaterialNeed(n.material, n.quantity)
+    return list(merged.values())

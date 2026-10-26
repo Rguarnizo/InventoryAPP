@@ -5,7 +5,7 @@ Aplicación web para gestionar el catálogo de productos (figuras de concreto, v
 - **Productos**: foto, código, tipo, categoría, precios mín./máx./venta, precio del molde, stock y una **receta** por unidad. Se muestran en una tabla ordenable y filtrable, con columnas configurables.
 - **Materia prima**: presentación de compra (ej. bulto de 25 kg por $41.900), costo por g/ml/unidad calculado, stock, mínimo y alertas. Registra compras y ajustes.
 - **Mezclas**: fórmulas reutilizables por proporción (ej. *Concreto estándar* = cemento 1 : marmolina 0,3 : arena 0,7; *Cera de soya*). El costo por gramo se calcula solo.
-- **Lotes**: se precargan desde la receta × cantidad, y la mezcla se puede cambiar (ej. otra cera). Pasan por los estados planificado → en proceso → terminado o cancelado: la materia prima se descuenta al iniciar, las unidades buenas se suman al stock al terminar, y cancelar revierte todo. El costo real se congela al consumir.
+- **Lotes**: pueden incluir **varios productos** (figuras y velas). La materia prima se precarga sumando sus recetas y se puede ajustar; la mezcla de cada producto se puede cambiar (ej. otra cera). Pasan por los estados planificado → en proceso → terminado o cancelado: la materia prima se descuenta al iniciar, las unidades buenas de cada producto se suman al stock al terminar, y cancelar revierte todo. El costo real se congela al consumir y se reparte entre los productos según su costo estimado por receta, así cada uno tiene su costo unitario real.
 - **Importar/Exportar CSV** de productos y materia prima (compatible con LibreOffice/Excel) y exportación de lotes.
 - Datos iniciales cargados desde `Informacion.ods`: 10 materiales, 4 mezclas, 27 figuras de concreto y 31 velas.
 
@@ -69,8 +69,8 @@ En Portainer se agrega como *Additional paths* del stack, si tu versión lo ofre
 
 1. **Materia prima → Registrar compra** (icono de carrito) para cargar el stock real. Define un *stock mínimo* para recibir alertas en el Resumen.
 2. **Productos**: sube la foto y revisa la receta. Las figuras de concreto usan `peso agua × 2` gramos de *Concreto estándar*; las velas usan su peso en *Cera de soya*. Puedes agregar mechas, pegante, etc. como materiales sueltos.
-3. **Lotes → Nuevo lote**: elige el producto y la cantidad. Revisa o ajusta los materiales (puedes cambiar la cera) y crea el lote.
-4. En el lote, **Iniciar** descuenta los materiales. Si falta stock, la app avisa y puedes continuar de todas formas. **Terminar** pide las unidades producidas y defectuosas.
+3. **Lotes → Nuevo lote**: agrega uno o varios productos con sus unidades (puedes cambiar la cera de cada uno). Revisa o ajusta los materiales y crea el lote.
+4. En el lote, **Iniciar** descuenta los materiales. Si falta stock, la app avisa y puedes continuar de todas formas. **Terminar** pide las unidades producidas y defectuosas de cada producto.
 5. Las ventas o ajustes de producto terminado se registran desde la ficha del producto.
 
 ## Desarrollo local (sin Docker)

@@ -68,10 +68,14 @@ def change_status(
     batch: Batch,
     new_status: BatchStatus,
     *,
-    produced: int | None = None,
-    defective: int | None = None,
+    results: dict[int, tuple[int, int]] | None = None,
     force: bool = False,
 ) -> Batch:
+    """Cambia el estado del lote moviendo inventario.
+
+    `results` es item_id → (producidas, defectuosas) y se usa al terminar; los ítems sin
+    resultado se asumen producidos según lo planificado y sin defectos.
+    """
     old = batch.status
     if new_status == old:
         return batch
@@ -82,26 +86,32 @@ def change_status(
         _consume(db, batch, force)
 
     if new_status == S.terminado:
-        if produced is not None:
-            batch.produced_quantity = produced
-        elif batch.produced_quantity is None:
-            batch.produced_quantity = batch.planned_quantity
-        if defective is not None:
-            batch.defective_quantity = defective
-        if batch.defective_quantity > batch.produced_quantity:
-            raise HTTPException(400, "Las unidades defectuosas no pueden superar las producidas")
-        batch.product.stock += batch.good_quantity
-        db.add(StockMovement(product=batch.product, batch_id=batch.id, type=MovementType.produccion,
-                             quantity=batch.good_quantity, note=f"Lote {batch.code}"))
+        results = results or {}
+        unknown = set(results) - {i.id for i in batch.items}
+        if unknown:
+            raise HTTPException(400, f"Ítems que no pertenecen al lote: {sorted(unknown)}")
+        for item in batch.items:
+            produced, defective = results.get(
+                item.id, (item.produced_quantity if item.produced_quantity is not None else item.planned_quantity,
+                          item.defective_quantity or 0),
+            )
+            if defective > produced:
+                raise HTTPException(400, f"{item.product.name}: las defectuosas no pueden superar las producidas")
+            item.produced_quantity, item.defective_quantity = produced, defective
+            item.product.stock += item.good_quantity
+            db.add(StockMovement(product=item.product, batch_id=batch.id, type=MovementType.produccion,
+                                 quantity=item.good_quantity, note=f"Lote {batch.code}"))
 
     if old == S.terminado and new_status == S.cancelado:
-        if batch.product.stock < batch.good_quantity and not force:
+        lacking = [i.product.name for i in batch.items if i.product.stock < i.good_quantity]
+        if lacking and not force:
             raise HTTPException(
-                409, "El producto ya no tiene suficiente stock para revertir este lote (usa forzar)"
+                409, f"Ya no hay suficiente stock para revertir: {', '.join(lacking)} (usa forzar)"
             )
-        batch.product.stock -= batch.good_quantity
-        db.add(StockMovement(product=batch.product, batch_id=batch.id, type=MovementType.reversion_lote,
-                             quantity=-batch.good_quantity, note=f"Cancelación lote {batch.code}"))
+        for item in batch.items:
+            item.product.stock -= item.good_quantity
+            db.add(StockMovement(product=item.product, batch_id=batch.id, type=MovementType.reversion_lote,
+                                 quantity=-item.good_quantity, note=f"Cancelación lote {batch.code}"))
 
     if new_status in (S.planificado, S.cancelado) and batch.materials_consumed:
         _revert_consumption(db, batch)

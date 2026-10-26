@@ -22,7 +22,8 @@ import { IconArrowLeft, IconInfoCircle } from '@tabler/icons-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from 'react-router';
 import { api, ApiError } from '../api/client';
-import type { BatchDetail, BatchStatus, Material, Page, ProductDetail } from '../api/types';
+import type { BatchDetail, BatchItem, BatchPreview, BatchStatus, Material, Mixture, Page, Product } from '../api/types';
+import { BatchItemRow, BatchItemsEditor, newItemRow, toItemInputs } from '../components/BatchItemsEditor';
 import { BatchMaterialRow, BatchMaterialsEditor } from '../components/BatchMaterialsEditor';
 import { PageHeader } from '../components/PageHeader';
 import { ProductThumb } from '../components/ProductThumb';
@@ -37,38 +38,57 @@ interface Shortage {
   unit: Material['unit'];
 }
 
+interface ItemResult {
+  item_id: number;
+  produced_quantity: number;
+  defective_quantity: number;
+}
+
 interface StatusPayload {
   status: BatchStatus;
-  produced_quantity?: number;
-  defective_quantity?: number;
+  results?: ItemResult[];
   force?: boolean;
 }
+
+const toRows = (items: BatchItem[]): BatchItemRow[] =>
+  items.map((i) => ({ ...newItemRow(i.product.id, i.planned_quantity) }));
 
 export function BatchPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const batch = useQuery({ queryKey: ['batches', Number(id)], queryFn: () => api.get<BatchDetail>(`/batches/${id}`) });
-  const product = useQuery({
-    queryKey: ['products', batch.data?.product.id],
-    queryFn: () => api.get<ProductDetail>(`/products/${batch.data!.product.id}`),
-    enabled: !!batch.data,
+  const products = useQuery({
+    queryKey: ['products', 'options'],
+    queryFn: () => api.get<Page<Product>>('/products', { size: 500, sort: 'name' }),
   });
+  const mixtures = useQuery({ queryKey: ['mixtures'], queryFn: () => api.get<Mixture[]>('/mixtures') });
   const materials = useQuery({
     queryKey: ['materials', 'all'],
     queryFn: () => api.get<Page<Material>>('/materials', { size: 500 }),
   });
 
-  const [info, setInfo] = useState({ code: '', production_date: '', planned_quantity: 1, notes: '' });
+  const [info, setInfo] = useState({ code: '', production_date: '', notes: '' });
   const [rows, setRows] = useState<BatchMaterialRow[]>([]);
+  const [items, setItems] = useState<BatchItemRow[] | null>(null);
   const [finishing, setFinishing] = useState(false);
 
   useEffect(() => {
     if (!batch.data) return;
     const b = batch.data;
-    setInfo({ code: b.code, production_date: b.production_date, planned_quantity: b.planned_quantity, notes: b.notes ?? '' });
+    setInfo({ code: b.code, production_date: b.production_date, notes: b.notes ?? '' });
     setRows(b.materials.map((m) => ({ material_id: m.material.id, quantity: m.quantity })));
+    setItems(null);
   }, [batch.data]);
+
+  const recalculate = useMutation({
+    mutationFn: () =>
+      api.post<BatchPreview>('/batches/preview', {
+        items: items ? toItemInputs(items) : toItemInputs(toRows(batch.data!.items)),
+      }),
+    onSuccess: (p) => setRows(p.lines.map((l) => ({ material_id: l.material.id, quantity: l.quantity }))),
+    onError: notifyError,
+  });
 
   const invalidate = () => {
     for (const key of ['batches', 'materials', 'products', 'dashboard']) queryClient.invalidateQueries({ queryKey: [key] });
@@ -78,7 +98,7 @@ export function BatchPage() {
     mutationFn: () => {
       const b = batch.data!;
       const body: Record<string, unknown> = { code: info.code, production_date: info.production_date, notes: info.notes || null };
-      if (b.status === 'planificado' || b.status === 'en_proceso') body.planned_quantity = info.planned_quantity;
+      if (items) body.items = toItemInputs(items);
       if (!b.materials_consumed) body.materials = rows.filter((r) => r.material_id && r.quantity > 0);
       return api.put<BatchDetail>(`/batches/${id}`, body);
     },
@@ -161,9 +181,8 @@ export function BatchPage() {
   if (batch.isLoading || !batch.data) return <Loader />;
   const b = batch.data;
   const frozen = Object.fromEntries(b.materials.map((m) => [m.material.id, m.unit_cost]));
-  const price = product.data?.sale_price || product.data?.min_price;
   const editableMaterials = !b.materials_consumed;
-  const editableQuantity = b.status === 'planificado' || b.status === 'en_proceso';
+  const editableItems = b.status === 'planificado' && !b.materials_consumed;
 
   const actions: React.ReactNode[] = [];
   if (b.status === 'planificado') {
@@ -235,7 +254,7 @@ export function BatchPage() {
             {b.code} <StatusBadge status={b.status} />
           </Group>
         }
-        subtitle={`${date(b.production_date)} · ${b.product.name}`}
+        subtitle={`${date(b.production_date)} · ${b.items.length} producto${b.items.length === 1 ? '' : 's'} · ${b.planned_quantity} unidades`}
         actions={actions}
       />
 
@@ -243,53 +262,24 @@ export function BatchPage() {
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Stack>
             <Card withBorder>
-              <Group gap="sm" mb="md" wrap="nowrap" style={{ cursor: 'pointer' }} onClick={() => navigate(`/productos/${b.product.id}`)}>
-                <ProductThumb url={b.product.thumb_url} type={b.product.type} size={56} />
-                <div>
-                  <Text fw={700}>{b.product.name}</Text>
-                  <Text size="xs" c="dimmed">
-                    {b.product.code}
-                  </Text>
-                </div>
-              </Group>
               <Table>
                 <Table.Tbody>
                   <Table.Tr>
-                    <Table.Td>Planificadas</Table.Td>
+                    <Table.Td>Unidades planificadas</Table.Td>
                     <Table.Td ta="right">{b.planned_quantity}</Table.Td>
                   </Table.Tr>
+                  {b.status === 'terminado' && (
+                    <Table.Tr>
+                      <Table.Td>Unidades buenas</Table.Td>
+                      <Table.Td ta="right">{b.good_quantity}</Table.Td>
+                    </Table.Tr>
+                  )}
                   <Table.Tr>
-                    <Table.Td>Producidas</Table.Td>
-                    <Table.Td ta="right">{b.produced_quantity ?? '—'}</Table.Td>
-                  </Table.Tr>
-                  <Table.Tr>
-                    <Table.Td>Defectuosas</Table.Td>
-                    <Table.Td ta="right">{b.defective_quantity}</Table.Td>
-                  </Table.Tr>
-                  <Table.Tr>
-                    <Table.Td>Costo total</Table.Td>
+                    <Table.Td>Costo total de materiales</Table.Td>
                     <Table.Td ta="right" fw={700}>
                       {money(b.total_cost)}
                     </Table.Td>
                   </Table.Tr>
-                  <Table.Tr>
-                    <Table.Td>Costo por unidad buena</Table.Td>
-                    <Table.Td ta="right" fw={700}>
-                      {money(b.unit_cost)}
-                    </Table.Td>
-                  </Table.Tr>
-                  {product.data && (
-                    <Table.Tr>
-                      <Table.Td>Costo estimado (receta)</Table.Td>
-                      <Table.Td ta="right">{money(product.data.estimated_cost)}</Table.Td>
-                    </Table.Tr>
-                  )}
-                  {price && b.unit_cost !== null ? (
-                    <Table.Tr>
-                      <Table.Td>Margen sobre {money(price)}</Table.Td>
-                      <Table.Td ta="right">{percent((price - b.unit_cost) / price)}</Table.Td>
-                    </Table.Tr>
-                  ) : null}
                 </Table.Tbody>
               </Table>
             </Card>
@@ -302,15 +292,6 @@ export function BatchPage() {
                   value={info.production_date}
                   onChange={(e) => setInfo({ ...info, production_date: e.currentTarget.value })}
                 />
-                {editableQuantity && (
-                  <NumberInput
-                    label="Unidades planificadas"
-                    value={info.planned_quantity}
-                    onChange={(v) => setInfo({ ...info, planned_quantity: Number(v) || 1 })}
-                    min={1}
-                    allowDecimal={false}
-                  />
-                )}
                 <Textarea label="Notas" value={info.notes} onChange={(e) => setInfo({ ...info, notes: e.currentTarget.value })} autosize minRows={2} />
                 <Button onClick={() => save.mutate()} loading={save.isPending}>
                   Guardar cambios
@@ -320,71 +301,200 @@ export function BatchPage() {
           </Stack>
         </Grid.Col>
         <Grid.Col span={{ base: 12, md: 8 }}>
-          <Card withBorder>
-            <Title order={5} mb="xs">
-              Materia prima del lote
-            </Title>
-            {b.materials_consumed ? (
-              <Alert icon={<IconInfoCircle size={18} />} color="blue" mb="sm" p="xs">
-                Los materiales ya se descontaron del inventario con el costo de ese momento. Para editarlos, vuelve el lote a «planificado».
-              </Alert>
-            ) : (
-              <Text size="sm" c="dimmed" mb="sm">
-                Ajusta las cantidades reales si usaste más o menos; se descontarán al iniciar o terminar el lote.
-              </Text>
-            )}
-            <BatchMaterialsEditor
-              rows={rows}
-              onChange={editableMaterials ? setRows : undefined}
-              materials={materials.data?.items ?? []}
-              frozenCosts={b.materials_consumed ? frozen : undefined}
-              showStock={editableMaterials}
-            />
-          </Card>
+          <Stack>
+            <Card withBorder>
+              <Group justify="space-between" mb="xs">
+                <Title order={5}>Productos del lote</Title>
+                {editableItems && !items && (
+                  <Button size="xs" variant="light" onClick={() => setItems(toRows(b.items))}>
+                    Editar productos
+                  </Button>
+                )}
+                {items && (
+                  <Button size="xs" variant="subtle" color="gray" onClick={() => setItems(null)}>
+                    Descartar cambios
+                  </Button>
+                )}
+              </Group>
+              {items ? (
+                <>
+                  <BatchItemsEditor rows={items} onChange={setItems} products={products.data?.items ?? []} mixtures={mixtures.data ?? []} />
+                  <Text size="xs" c="dimmed" mt="xs">
+                    Al cambiar productos, usa «Recalcular desde las recetas» en la materia prima y luego «Guardar cambios».
+                  </Text>
+                </>
+              ) : (
+                <ItemsTable batch={b} onOpen={(id) => navigate(`/productos/${id}`)} />
+              )}
+            </Card>
+            <Card withBorder>
+              <Group justify="space-between" mb="xs">
+                <Title order={5}>Materia prima del lote</Title>
+                {editableMaterials && (
+                  <Button size="xs" variant="subtle" onClick={() => recalculate.mutate()} loading={recalculate.isPending}>
+                    Recalcular desde las recetas
+                  </Button>
+                )}
+              </Group>
+              {b.materials_consumed ? (
+                <Alert icon={<IconInfoCircle size={18} />} color="blue" mb="sm" p="xs">
+                  Los materiales ya se descontaron del inventario con el costo de ese momento. Para editarlos, vuelve el lote a «planificado».
+                </Alert>
+              ) : (
+                <Text size="sm" c="dimmed" mb="sm">
+                  Ajusta las cantidades reales si usaste más o menos; se descontarán al iniciar o terminar el lote.
+                </Text>
+              )}
+              <BatchMaterialsEditor
+                rows={rows}
+                onChange={editableMaterials ? setRows : undefined}
+                materials={materials.data?.items ?? []}
+                frozenCosts={b.materials_consumed ? frozen : undefined}
+                showStock={editableMaterials}
+              />
+            </Card>
+          </Stack>
         </Grid.Col>
       </Grid>
 
       <FinishModal
         opened={finishing}
-        planned={b.planned_quantity}
+        items={b.items}
         loading={changeStatus.isPending}
         onClose={() => setFinishing(false)}
-        onConfirm={(produced, defective) =>
-          changeStatus.mutate({ status: 'terminado', produced_quantity: produced, defective_quantity: defective })
-        }
+        onConfirm={(results) => changeStatus.mutate({ status: 'terminado', results })}
       />
     </>
   );
 }
 
+function ItemsTable({ batch, onOpen }: { batch: BatchDetail; onOpen: (productId: number) => void }) {
+  const done = batch.status === 'terminado';
+  return (
+    <Table.ScrollContainer minWidth={560}>
+      <Table highlightOnHover>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Producto</Table.Th>
+            <Table.Th ta="right">Planif.</Table.Th>
+            {done && <Table.Th ta="right">Prod.</Table.Th>}
+            {done && <Table.Th ta="right">Def.</Table.Th>}
+            <Table.Th ta="right">Costo asignado</Table.Th>
+            <Table.Th ta="right">Costo c/u</Table.Th>
+            <Table.Th ta="right">Margen</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {batch.items.map((i) => {
+            const price = i.product.reference_price;
+            return (
+              <Table.Tr key={i.id} style={{ cursor: 'pointer' }} onClick={() => onOpen(i.product.id)}>
+                <Table.Td>
+                  <Group gap="xs" wrap="nowrap">
+                    <ProductThumb url={i.product.thumb_url} type={i.product.type} size={32} />
+                    <div>
+                      <Text size="sm" fw={600}>
+                        {i.product.name}
+                      </Text>
+                      <Text size="xs" c="dimmed">
+                        {i.product.code}
+                      </Text>
+                    </div>
+                  </Group>
+                </Table.Td>
+                <Table.Td ta="right">{i.planned_quantity}</Table.Td>
+                {done && <Table.Td ta="right">{i.produced_quantity ?? '—'}</Table.Td>}
+                {done && <Table.Td ta="right">{i.defective_quantity}</Table.Td>}
+                <Table.Td ta="right">{money(i.allocated_cost)}</Table.Td>
+                <Table.Td ta="right" fw={600}>
+                  {money(i.unit_cost)}
+                </Table.Td>
+                <Table.Td ta="right">{price && i.unit_cost !== null ? percent((price - i.unit_cost) / price) : '—'}</Table.Td>
+              </Table.Tr>
+            );
+          })}
+        </Table.Tbody>
+      </Table>
+    </Table.ScrollContainer>
+  );
+}
+
 function FinishModal(props: {
   opened: boolean;
-  planned: number;
+  items: BatchItem[];
   loading: boolean;
   onClose: () => void;
-  onConfirm: (produced: number, defective: number) => void;
+  onConfirm: (results: ItemResult[]) => void;
 }) {
-  const [produced, setProduced] = useState(props.planned);
-  const [defective, setDefective] = useState(0);
+  const [results, setResults] = useState<ItemResult[]>([]);
 
-  useEffect(() => setProduced(props.planned), [props.planned]);
+  useEffect(() => {
+    if (props.opened) {
+      setResults(
+        props.items.map((i) => ({
+          item_id: i.id,
+          produced_quantity: i.produced_quantity ?? i.planned_quantity,
+          defective_quantity: i.defective_quantity,
+        })),
+      );
+    }
+  }, [props.opened, props.items]);
+
+  const set = (id: number, change: Partial<ItemResult>) =>
+    setResults((rs) => rs.map((r) => (r.item_id === id ? { ...r, ...change } : r)));
+  const good = results.reduce((s, r) => s + Math.max(r.produced_quantity - r.defective_quantity, 0), 0);
 
   return (
-    <Modal opened={props.opened} onClose={props.onClose} title="Terminar lote">
+    <Modal opened={props.opened} onClose={props.onClose} title="Terminar lote" size="lg">
       <Stack>
-        <NumberInput label="Unidades producidas" value={produced} onChange={(v) => setProduced(Number(v) || 0)} min={0} allowDecimal={false} />
-        <NumberInput
-          label="Unidades defectuosas"
-          value={defective}
-          onChange={(v) => setDefective(Number(v) || 0)}
-          min={0}
-          max={produced}
-          allowDecimal={false}
-        />
+        <Table>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Producto</Table.Th>
+              <Table.Th w={120}>Producidas</Table.Th>
+              <Table.Th w={120}>Defectuosas</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {props.items.map((i) => {
+              const r = results.find((x) => x.item_id === i.id);
+              if (!r) return null;
+              return (
+                <Table.Tr key={i.id}>
+                  <Table.Td>
+                    {i.product.name}
+                    <Text size="xs" c="dimmed">
+                      Planificadas: {i.planned_quantity}
+                    </Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput
+                      value={r.produced_quantity}
+                      onChange={(v) => set(i.id, { produced_quantity: Number(v) || 0 })}
+                      min={0}
+                      allowDecimal={false}
+                      aria-label={`Producidas de ${i.product.name}`}
+                    />
+                  </Table.Td>
+                  <Table.Td>
+                    <NumberInput
+                      value={r.defective_quantity}
+                      onChange={(v) => set(i.id, { defective_quantity: Number(v) || 0 })}
+                      min={0}
+                      max={r.produced_quantity}
+                      allowDecimal={false}
+                      aria-label={`Defectuosas de ${i.product.name}`}
+                    />
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
+          </Table.Tbody>
+        </Table>
         <Text size="sm">
-          Se sumarán <b>{Math.max(produced - defective, 0)}</b> unidades al stock del producto. Si los materiales no se habían descontado, se descontarán ahora.
+          Se sumarán <b>{good}</b> unidades buenas al stock de los productos. Si los materiales no se habían descontado, se descontarán ahora.
         </Text>
-        <Button color="teal" onClick={() => props.onConfirm(produced, defective)} loading={props.loading}>
+        <Button color="teal" onClick={() => props.onConfirm(results)} loading={props.loading}>
           Terminar
         </Button>
       </Stack>

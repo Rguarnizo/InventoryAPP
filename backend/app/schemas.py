@@ -221,35 +221,62 @@ class BatchMaterialOut(ORM):
     unit_cost: float
 
 
-class BatchCreate(BaseModel):
-    code: str | None = Field(default=None, max_length=32)
+class BatchItemIn(BaseModel):
     product_id: int
-    production_date: date | None = None
     planned_quantity: int = Field(gt=0)
-    notes: str | None = None
     mixture_overrides: dict[int, int] = Field(
         default_factory=dict, description="component_id → mixture_id para cambiar la mezcla (p.ej. otra cera)"
     )
+
+
+class BatchPreviewRequest(BaseModel):
+    items: list[BatchItemIn] = Field(min_length=1)
+
+
+class BatchPreviewItem(BaseModel):
+    product_id: int
+    planned_quantity: int
+    estimated_unit_cost: float
+
+
+class BatchPreview(BaseModel):
+    items: list[BatchPreviewItem]
+    lines: list["CostLine"]
+    total: float
+
+
+class BatchCreate(BaseModel):
+    code: str | None = Field(default=None, max_length=32)
+    production_date: date | None = None
+    notes: str | None = None
+    items: list[BatchItemIn] = Field(min_length=1)
     materials: list[BatchMaterialIn] | None = Field(
-        default=None, description="Si se omite, se calcula desde la receta del producto"
+        default=None, description="Si se omite, se calcula sumando las recetas de los productos"
     )
 
 
 class BatchUpdate(BaseModel):
     code: str | None = Field(default=None, max_length=32)
     production_date: date | None = None
-    planned_quantity: int | None = Field(default=None, gt=0)
-    produced_quantity: int | None = Field(default=None, ge=0)
-    defective_quantity: int | None = Field(default=None, ge=0)
     notes: str | None = None
+    items: list[BatchItemIn] | None = Field(
+        default=None, description="Reemplaza los productos del lote (solo si los materiales no se han descontado)"
+    )
     materials: list[BatchMaterialIn] | None = None
+
+
+class BatchItemResult(BaseModel):
+    item_id: int
+    produced_quantity: int = Field(ge=0)
+    defective_quantity: int = Field(default=0, ge=0)
 
 
 class BatchStatusChange(BaseModel):
     status: BatchStatus
-    produced_quantity: int | None = Field(default=None, ge=0)
-    defective_quantity: int | None = Field(default=None, ge=0)
-    force: bool = Field(default=False, description="Permite stock negativo de materiales")
+    results: list[BatchItemResult] = Field(
+        default_factory=list, description="Unidades producidas/defectuosas por ítem al terminar"
+    )
+    force: bool = Field(default=False, description="Permite stock negativo")
 
 
 class ProductRef(ORM):
@@ -258,21 +285,31 @@ class ProductRef(ORM):
     name: str
     type: ProductType
     thumb_url: str | None
+    reference_price: float | None = Field(description="Precio de venta, o el mínimo si no hay")
+
+
+class BatchItemOut(ORM):
+    id: int
+    product: ProductRef
+    planned_quantity: int
+    produced_quantity: int | None
+    defective_quantity: int
+    good_quantity: int
+    estimated_unit_cost: float
+    allocated_cost: float
+    unit_cost: float | None
 
 
 class BatchOut(ORM):
     id: int
     code: str
-    product: ProductRef
     production_date: date
-    planned_quantity: int
-    produced_quantity: int | None
-    defective_quantity: int
-    good_quantity: int
     status: BatchStatus
     materials_consumed: bool
+    items: list[BatchItemOut]
+    planned_quantity: int
+    good_quantity: int
     total_cost: float
-    unit_cost: float | None
     notes: str | None
     created_at: datetime
     updated_at: datetime
