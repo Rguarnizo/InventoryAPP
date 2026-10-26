@@ -1,0 +1,17 @@
+# Solo para hosts cuyo perfil AppArmor "docker-default" impide crear sockets Unix dentro de los
+# contenedores (visto en Proxmox VE 9 / Debian 13, kernel 6.17, AppArmor 4.1). Síntomas: Postgres
+# "could not create Unix socket ... Permission denied", Python "socket.socketpair() PermissionError".
+#
+# Desactiva AppArmor SOLO para los contenedores de esta app:
+#   docker compose -f docker-compose.yml -f docker-compose.apparmor.yml up -d
+# En Portainer: agrégalo en "Additional paths" del stack.
+services:
+  db:
+    security_opt:
+      - apparmor:unconfined
+  backend:
+    security_opt:
+      - apparmor:unconfined
+  frontend:
+    security_opt:
+      - apparmor:unconfined
