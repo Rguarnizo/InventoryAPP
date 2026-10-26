@@ -4,6 +4,7 @@ import {
   Anchor,
   Button,
   Card,
+  Divider,
   Grid,
   Group,
   List,
@@ -27,6 +28,7 @@ import { BatchItemRow, BatchItemsEditor, newItemRow, toItemInputs } from '../com
 import { BatchMaterialRow, BatchMaterialsEditor } from '../components/BatchMaterialsEditor';
 import { PageHeader } from '../components/PageHeader';
 import { ProductThumb } from '../components/ProductThumb';
+import { ProfitSummary } from '../components/ProfitSummary';
 import { StatusBadge } from '../components/StatusBadge';
 import { date, money, percent, qty } from '../lib/format';
 import { notifyError, notifyOk } from '../lib/notify';
@@ -282,6 +284,17 @@ export function BatchPage() {
                   </Table.Tr>
                 </Table.Tbody>
               </Table>
+              <Divider my="sm" />
+              <ProfitSummary
+                revenue={b.expected_revenue}
+                profit={b.expected_profit}
+                revenueMin={b.expected_revenue_min}
+                revenueMax={b.expected_revenue_max}
+                profitMin={b.expected_profit_min}
+                profitMax={b.expected_profit_max}
+                withoutPrice={b.items_without_price}
+                finished={b.status === 'terminado'}
+              />
             </Card>
             <Card withBorder>
               <Stack>
@@ -371,7 +384,7 @@ export function BatchPage() {
 function ItemsTable({ batch, onOpen }: { batch: BatchDetail; onOpen: (productId: number) => void }) {
   const done = batch.status === 'terminado';
   return (
-    <Table.ScrollContainer minWidth={560}>
+    <Table.ScrollContainer minWidth={640}>
       <Table highlightOnHover>
         <Table.Thead>
           <Table.Tr>
@@ -382,6 +395,7 @@ function ItemsTable({ batch, onOpen }: { batch: BatchDetail; onOpen: (productId:
             <Table.Th ta="right">Costo asignado</Table.Th>
             <Table.Th ta="right">Costo c/u</Table.Th>
             <Table.Th ta="right">Margen</Table.Th>
+            <Table.Th ta="right">Ganancia</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -410,6 +424,9 @@ function ItemsTable({ batch, onOpen }: { batch: BatchDetail; onOpen: (productId:
                   {money(i.unit_cost)}
                 </Table.Td>
                 <Table.Td ta="right">{price && i.unit_cost !== null ? percent((price - i.unit_cost) / price) : '—'}</Table.Td>
+                <Table.Td ta="right" c={i.expected_profit === null ? undefined : i.expected_profit >= 0 ? 'teal' : 'red'}>
+                  {i.expected_profit === null ? 'Sin precio' : money(i.expected_profit)}
+                </Table.Td>
               </Table.Tr>
             );
           })}

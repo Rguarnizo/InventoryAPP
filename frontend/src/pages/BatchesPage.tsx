@@ -1,4 +1,4 @@
-import { Button, Card, Group, Select, Text, TextInput } from '@mantine/core';
+import { Button, Card, Group, Select, Text, TextInput, Tooltip } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
@@ -15,7 +15,7 @@ const columns: Column<Batch>[] = [
   { key: 'code', header: 'Lote', sortable: true, render: (b) => <Text size="sm" fw={600} ff="monospace" style={{ whiteSpace: 'nowrap' }}>{b.code}</Text> },
   { key: 'production_date', header: 'Fecha', sortable: true, render: (b) => <Text size="sm" style={{ whiteSpace: 'nowrap' }}>{date(b.production_date)}</Text> },
   { key: 'items', header: 'Productos', sortable: true, render: (b) => <BatchProducts items={b.items} /> },
-  { key: 'planned_quantity', header: 'Planificadas', sortable: true, align: 'right', render: (b) => b.planned_quantity },
+  { key: 'planned_quantity', header: 'Unidades', sortable: true, align: 'right', render: (b) => b.planned_quantity },
   {
     key: 'good_quantity',
     header: 'Buenas',
@@ -24,6 +24,21 @@ const columns: Column<Batch>[] = [
     render: (b) => (b.status === 'terminado' ? b.good_quantity : '—'),
   },
   { key: 'total_cost', header: 'Costo total', sortable: true, align: 'right', render: (b) => money(b.total_cost) },
+  { key: 'expected_revenue', header: 'Venta total', sortable: true, align: 'right', hidden: true, render: (b) => money(b.expected_revenue) },
+  {
+    key: 'expected_profit',
+    header: 'Ganancia est.',
+    sortable: true,
+    align: 'right',
+    render: (b) => (
+      <Tooltip label="Hay productos sin precio; no suman a la venta" disabled={b.items_without_price === 0}>
+        <Text size="sm" fw={600} c={b.expected_profit >= 0 ? 'teal' : 'red'} style={{ whiteSpace: 'nowrap' }}>
+          {money(b.expected_profit)}
+          {b.items_without_price > 0 && ' *'}
+        </Text>
+      </Tooltip>
+    ),
+  },
   { key: 'status', header: 'Estado', sortable: true, render: (b) => <StatusBadge status={b.status} /> },
 ]
 

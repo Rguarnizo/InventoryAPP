@@ -152,6 +152,34 @@ def test_batch_with_several_products(seeded):
     assert "Luna Velas" in seeded.get("/api/export/batches").text
 
 
+def test_batch_expected_profit(seeded):
+    manos = product_by_name(seeded, "Manos")              # mín. 20.000, máx. 30.000
+    bandeja = product_by_name(seeded, "Bandeja Grande")   # sin precios ni receta
+    detail = seeded.get(f"/api/products/{manos['id']}").json()
+    seeded.put(f"/api/products/{manos['id']}", json={**{k: detail[k] for k in (
+        "code", "name", "type", "category", "description", "can_be_candle", "water_weight_ml", "mold_price",
+        "mold_count", "min_price", "max_price", "active")}, "sale_price": 25000})
+    batch = seeded.post("/api/batches", json={"items": [{"product_id": manos["id"], "planned_quantity": 4},
+                                                         {"product_id": bandeja["id"], "planned_quantity": 1}]}).json()
+    cost = batch["total_cost"]
+    assert batch["expected_revenue"] == pytest.approx(4 * 25000)   # usa el precio de venta
+    assert batch["expected_revenue_min"] == pytest.approx(4 * 20000)
+    assert batch["expected_revenue_max"] == pytest.approx(4 * 30000)
+    assert batch["expected_profit"] == pytest.approx(4 * 25000 - cost)
+    assert batch["expected_profit_min"] == pytest.approx(4 * 20000 - cost)
+    assert batch["items_without_price"] == 1
+    item = next(i for i in batch["items"] if i["product"]["id"] == manos["id"])
+    assert item["expected_profit"] == pytest.approx(4 * 25000 - item["allocated_cost"])
+
+    # Al terminar se cuentan solo las unidades buenas
+    res = seeded.post(f"/api/batches/{batch['id']}/status", json={
+        "status": "terminado", "force": True,
+        "results": [{"item_id": item["id"], "produced_quantity": 4, "defective_quantity": 1}]}).json()
+    assert res["expected_revenue"] == pytest.approx(3 * 25000)
+    by_profit = find(seeded, "/api/batches", sort="expected_profit", order="desc")
+    assert by_profit[0]["id"] == batch["id"]
+
+
 def test_edit_batch_items(seeded):
     luna = product_by_name(seeded, "Luna")
     manos = product_by_name(seeded, "Manos")

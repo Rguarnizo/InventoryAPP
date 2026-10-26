@@ -14,7 +14,7 @@ export function BatchProducts({ items, max = 3 }: { items: BatchItem[]; max?: nu
           ))}
           {items.length > max && <Avatar size={30} radius="sm">+{items.length - max}</Avatar>}
         </Avatar.Group>
-        <Text size="sm" lineClamp={1} maw={280}>
+        <Text size="sm" lineClamp={2} miw={130} maw={200}>
           {items.length === 1 ? items[0].product.name : `${items.length} productos: ${label}`}
         </Text>
       </Group>

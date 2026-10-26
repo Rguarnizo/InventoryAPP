@@ -9,6 +9,7 @@ import type { BatchDetail, BatchPreview, Material, Mixture, Page, Product } from
 import { BatchItemRow, BatchItemsEditor, newItemRow, toItemInputs } from '../components/BatchItemsEditor';
 import { BatchMaterialRow, BatchMaterialsEditor } from '../components/BatchMaterialsEditor';
 import { PageHeader } from '../components/PageHeader';
+import { ProfitSummary } from '../components/ProfitSummary';
 import { money } from '../lib/format';
 import { notifyError, notifyOk } from '../lib/notify';
 
@@ -73,6 +74,21 @@ export function BatchNewPage() {
 
   const mats = materials.data?.items ?? [];
   const total = rows.reduce((s, r) => s + r.quantity * (mats.find((m) => m.id === r.material_id)?.unit_cost ?? 0), 0);
+
+  // Venta estimada con los precios de cada producto (venta o mínimo; rango mín.–máx.)
+  const productById = new Map((products.data?.items ?? []).map((p) => [p.id, p]));
+  const revenue = { ref: 0, min: 0, max: 0, withoutPrice: 0 };
+  for (const i of inputs) {
+    const p = productById.get(i.product_id);
+    const ref = p?.sale_price || p?.min_price;
+    if (!ref) {
+      revenue.withoutPrice += 1;
+      continue;
+    }
+    revenue.ref += i.planned_quantity * ref;
+    revenue.min += i.planned_quantity * (p?.min_price || ref);
+    revenue.max += i.planned_quantity * (p?.max_price || ref);
+  }
 
   return (
     <>
@@ -145,6 +161,19 @@ export function BatchNewPage() {
                 </>
               )}
             </Card>
+            {inputs.length > 0 && (
+              <Card withBorder>
+                <ProfitSummary
+                  revenue={revenue.ref}
+                  profit={revenue.ref - total}
+                  revenueMin={revenue.min}
+                  revenueMax={revenue.max}
+                  profitMin={revenue.min - total}
+                  profitMax={revenue.max - total}
+                  withoutPrice={revenue.withoutPrice}
+                />
+              </Card>
+            )}
             <Group justify="flex-end">
               <Button onClick={() => create.mutate()} loading={create.isPending} disabled={inputs.length === 0}>
                 Crear lote

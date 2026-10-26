@@ -253,6 +253,37 @@ class Batch(Base, TimestampMixin):
     def good_quantity(self) -> int:
         return sum(i.good_quantity for i in self.items)
 
+    def _revenue(self, price: str) -> float:
+        return sum(r for i in self.items if (r := i.revenue(price)) is not None)
+
+    @property
+    def expected_revenue(self) -> float:
+        return self._revenue("reference")
+
+    @property
+    def expected_revenue_min(self) -> float:
+        return self._revenue("min")
+
+    @property
+    def expected_revenue_max(self) -> float:
+        return self._revenue("max")
+
+    @property
+    def expected_profit(self) -> float:
+        return self.expected_revenue - self.total_cost
+
+    @property
+    def expected_profit_min(self) -> float:
+        return self.expected_revenue_min - self.total_cost
+
+    @property
+    def expected_profit_max(self) -> float:
+        return self.expected_revenue_max - self.total_cost
+
+    @property
+    def items_without_price(self) -> int:
+        return sum(1 for i in self.items if i.product.reference_price is None)
+
     def cost_share(self, item: "BatchItem") -> float:
         """Fracción del costo del lote que corresponde a un ítem.
 
@@ -293,6 +324,24 @@ class BatchItem(Base):
     @property
     def allocated_cost(self) -> float:
         return self.batch.total_cost * self.batch.cost_share(self)
+
+    def revenue(self, price: str = "reference") -> float | None:
+        """Ingreso si se venden todas las unidades buenas (o las planificadas si no ha terminado)."""
+        value = {
+            "reference": self.product.reference_price,
+            "min": self.product.min_price or self.product.reference_price,
+            "max": self.product.max_price or self.product.reference_price,
+        }[price]
+        return self.good_quantity * value if value is not None else None
+
+    @property
+    def expected_revenue(self) -> float | None:
+        return self.revenue()
+
+    @property
+    def expected_profit(self) -> float | None:
+        revenue = self.revenue()
+        return revenue - self.allocated_cost if revenue is not None else None
 
     @property
     def unit_cost(self) -> float | None:

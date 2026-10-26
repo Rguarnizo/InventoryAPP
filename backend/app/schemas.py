@@ -286,6 +286,8 @@ class ProductRef(ORM):
     type: ProductType
     thumb_url: str | None
     reference_price: float | None = Field(description="Precio de venta, o el mínimo si no hay")
+    min_price: float | None
+    max_price: float | None
 
 
 class BatchItemOut(ORM):
@@ -298,6 +300,8 @@ class BatchItemOut(ORM):
     estimated_unit_cost: float
     allocated_cost: float
     unit_cost: float | None
+    expected_revenue: float | None = Field(description="Ingreso si se vende todo al precio de referencia")
+    expected_profit: float | None
 
 
 class BatchOut(ORM):
@@ -310,6 +314,13 @@ class BatchOut(ORM):
     planned_quantity: int
     good_quantity: int
     total_cost: float
+    expected_revenue: float = Field(description="Ingreso si se vende todo el lote (precio de venta o mínimo)")
+    expected_revenue_min: float
+    expected_revenue_max: float
+    expected_profit: float
+    expected_profit_min: float
+    expected_profit_max: float
+    items_without_price: int
     notes: str | None
     created_at: datetime
     updated_at: datetime

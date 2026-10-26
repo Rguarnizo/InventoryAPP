@@ -37,6 +37,8 @@ COMPUTED = {
     "planned_quantity": lambda b: b.planned_quantity,
     "good_quantity": lambda b: b.good_quantity,
     "items": lambda b: len(b.items),
+    "expected_revenue": lambda b: b.expected_revenue,
+    "expected_profit": lambda b: b.expected_profit,
 }
 
 

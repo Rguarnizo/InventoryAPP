@@ -139,6 +139,8 @@ export interface ProductRef {
   type: ProductType;
   thumb_url: string | null;
   reference_price: number | null;
+  min_price: number | null;
+  max_price: number | null;
 }
 
 export interface BatchItem {
@@ -151,6 +153,8 @@ export interface BatchItem {
   estimated_unit_cost: number;
   allocated_cost: number;
   unit_cost: number | null;
+  expected_revenue: number | null;
+  expected_profit: number | null;
 }
 
 export interface BatchItemInput {
@@ -169,6 +173,13 @@ export interface Batch {
   planned_quantity: number;
   good_quantity: number;
   total_cost: number;
+  expected_revenue: number;
+  expected_revenue_min: number;
+  expected_revenue_max: number;
+  expected_profit: number;
+  expected_profit_min: number;
+  expected_profit_max: number;
+  items_without_price: number;
   notes: string | null;
   created_at: string;
   updated_at: string;

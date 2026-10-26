@@ -92,10 +92,12 @@ def export_batches(db: DbSession, _: CurrentUser):
     batches = db.scalars(select(Batch).order_by(Batch.production_date, Batch.id)).all()
     header = ["code", "production_date", "status", "product_code", "product", "planned_quantity",
               "produced_quantity", "defective_quantity", "good_quantity", "allocated_cost", "unit_cost",
-              "batch_total_cost", "notes"]
+              "expected_revenue", "expected_profit", "batch_total_cost", "notes"]
     rows = ([b.code, b.production_date.isoformat(), b.status.value, i.product.code, i.product.name,
              i.planned_quantity, i.produced_quantity, i.defective_quantity, i.good_quantity,
              round(i.allocated_cost, 2), round(i.unit_cost, 2) if i.unit_cost is not None else "",
+             round(i.expected_revenue, 2) if i.expected_revenue is not None else "",
+             round(i.expected_profit, 2) if i.expected_profit is not None else "",
              round(b.total_cost, 2), b.notes or ""]
             for b in batches for i in b.items)
     return _csv_response("lotes.csv", header, rows)
